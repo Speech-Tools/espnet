@@ -36,8 +36,8 @@ inference_nj=16      # The number of parallel jobs in decoding.
 gpu_inference=false  # Whether to perform gpu decoding.
 #dumpdir=dump         # Directory to dump features.
 #expdir=exp           # Directory to save experiments.
-dumpdir=/data/espnet2/dump
-expdir=/data/espnet2/exp
+dumpdir=speechDATA/dump
+expdir=speechDATA/exp
 python=python3       # Specify python to execute espnet commands.
 
 # Data preparation related

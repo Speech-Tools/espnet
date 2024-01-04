@@ -1,12 +1,14 @@
 """
 Python으로 구현한 Kaldi-Style 데이터 준비 스크립트
 """
-
+import math
 import argparse
 import subprocess
+import numpy as np
 from glob import glob
 from pathlib import Path
-from typing import Union
+from typing import Union, List, Tuple
+from multiprocessing import Pool
 
 
 DATA = Path("data")
@@ -29,10 +31,47 @@ def get_parser() -> argparse.ArgumentParser:
     )
     return parser
 
+def process_one(txt_file: Tuple[int, Path]):
+    i, txt_file_path = txt_file
+        
+    wav_file = str(txt_file_path).replace('label', 'source')
+    wav_file = Path(wav_file).with_suffix('.wav')
+    if not wav_file.is_file():
+        # wav 파일이 없다면 이번 데이터는 패스
+        print(f"No matching wav file to '{txt_file_path}'")
+        return (None, None, None)
+
+    # Prepare text
+    utt_id = str(i)
+    with open(txt_file_path, 'r') as f:
+        utt = f.read().strip()
+        utt = utt.replace('\n',' ')
+
+        # utt가 없다면 패스
+        if len(utt) < 1:
+            return (None, None, None)
+
+    transcript = f"{utt_id} {utt}"
+
+    # Prepare wav.scp
+    wav_line = f"{utt_id} {wav_file.absolute()}"
+
+    # Prepare utt2spk
+    # Actually, we don't use speaker information.
+    utt2spk_line = f"{utt_id} {utt_id}"
+
+    return (transcript, wav_line, utt2spk_line)
+
+def work(txt_files: List[Tuple[int, Path]]):
+    outputs = list(map(process_one, txt_files))
+    outputs = [output for output in outputs if output[0] != None]
+    print(f"Done multiprocess id: {txt_files[0][0]}")
+    return outputs
 
 def prepare_data(
     db_dir: Union[str, Path],
     data_part: Union[str, Path],
+    nj: int = 256,
 ):
     db_dir = Path(db_dir)
     data_part = Path(data_part)
@@ -60,39 +99,29 @@ def prepare_data(
     # Prepare `text`
     ## '.txt' 파일 탐색
     ## utt id는 순서대로 임의로 붙이기
+    print(f"Start find txt files in {src_dir}")
+
+    target_txts = list(enumerate(sorted(src_dir.rglob('*.txt'))))
+    target_txts = [(str(target_txt[0]).zfill(10), target_txt[1]) for target_txt in target_txts]
+    div = math.ceil(len(target_txts) / nj)
+    div_target_txts = [target_txts[i*div:(i+1)*div] for i in range((len(target_txts)+div-1) // div)]
+
+    with Pool(nj) as p:
+        results = p.map(work, div_target_txts)
+
     transcripts = []
     wavs = []
     utt2spks = []
-    print(f"Start find txt files in {src_dir}")
+    for result in results:
+        for transcript, wav_line, utt2spk_line in result:
+            transcripts.append(transcript)
+            wavs.append(wav_line)
+            utt2spks.append(utt2spk_line)
 
-    
-
-    for i, txt_file in enumerate(sorted(src_dir.rglob("*.txt"))):
-        # '.txt' 파일에서 `label` 경로를 `source`로 바꾸고
-        # 확장자를 '.wav'로 바꾸면 wav 파일 경로가 되도록 데이터셋을 구성함
-        wav_file = str(txt_file).replace('label', 'source')
-        wav_file = Path(wav_file).with_suffix('.wav')
-        if not wav_file.is_file():
-            # wav 파일이 없다면 이번 데이터는 패스
-            print(f"No matching wav file to '{txt_file}'")
-            continue
-
-        # Prepare text
-        utt_id = str(i)
-        with open(txt_file, 'r') as f:
-            utt = f.read().strip()
-
-        transcript = f"{utt_id} {utt}"
-        transcripts.append(transcript)
-
-        # Prepare wav.scp
-        wav_line = f"{utt_id} {wav_file.absolute()}"
-        wavs.append(wav_line)
-
-        # Prepare utt2spk
-        # Actually, we don't use speaker information.
-        utt2spk_line = f"{utt_id} {utt_id}"
-        utt2spks.append(utt2spk_line)
+    # Sort
+    transcripts.sort()
+    wavs.sort()
+    utt2spks.sort()
 
     # Check data
     if len(transcripts) != len(utt2spks):

@@ -17,12 +17,10 @@ if [ "${feats_type}" = fbank_pitch ]; then
 fi
 
 ./asr.sh \
-    --stage 1 \
-    --stop_stage 2 \
     --ngpu 4 \
     --token_type bpe \
     --local_data_opts "${local_data_opts}" \
-    --nbpe 3192 \
+    --nbpe 3569 \
     --lang kr \
     --lm_config conf/train_lm_transformer.yaml \
     --asr_config conf/train_asr_streaming_conformer.yaml \
@@ -31,5 +29,6 @@ fi
     --valid-set "${valid_set}" \
     --test_sets "${test_sets}" \
     --bpe_nlsyms '[unk]' \
+    --min_wav_duration 5 \
     --bpe_train_text "data/train_data_01/text" \
     --lm_train_text "data/train_data_01/text" "$@"
